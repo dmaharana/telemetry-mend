@@ -6,14 +6,15 @@ all: build
 # Help target
 help:
 	@echo "Available targets:"
-	@echo "  build        - Build the entire application (frontend + backend)"
+	@echo "  build        - Build the entire application (frontend + backend + cli)"
 	@echo "  build-ui     - Build the React frontend"
 	@echo "  build-server - Build the Go backend binary"
+	@echo "  build-cli    - Build the Ingestion CLI binary"
 	@echo "  test         - Run backend tests"
 	@echo "  clean        - Remove build artifacts"
 
 # Build everything
-build: build-ui build-server
+build: build-ui build-server build-cli
 
 # Build the frontend
 build-ui:
@@ -29,6 +30,13 @@ build-server:
 	mkdir -p bin
 	cd telemetry-mend-server && go build -o ../bin/telemetry-mend ./cmd/server/main.go
 	@echo "Binary created at bin/telemetry-mend"
+
+# Build the ingestion CLI
+build-cli:
+	@echo "Building CLI..."
+	mkdir -p bin
+	cd telemetry-mend-cli && go build -o ../bin/tm-ingest main.go
+	@echo "Binary created at bin/tm-ingest"
 
 # Run tests
 test:

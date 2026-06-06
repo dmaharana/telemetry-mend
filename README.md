@@ -114,3 +114,37 @@ encoding.codec = "json"
 X-API-Key = "tm_your_api_key"
 ```
 
+## 🛠️ Ingestion CLI (`tm-ingest`)
+
+TelemetryMend includes a lightweight Go-based CLI tool for pushing logs from application servers.
+
+### Installation
+Build the CLI from the project root:
+```bash
+make build-cli
+```
+The binary will be available at `bin/tm-ingest`.
+
+### Usage
+The CLI reads logs from **stdin**, allowing you to pipe output from any process or log file.
+
+#### Piping from an application
+```bash
+./my-app | ./bin/tm-ingest -key tm_your_api_key -env production
+```
+
+#### Tailing a log file
+```bash
+tail -f /var/log/app.log | ./bin/tm-ingest -key tm_your_api_key -env production
+```
+
+#### Configuration
+| Flag | Env Var | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `-key` | `TM_API_KEY` | - | **Required.** Your application API Key. |
+| `-url` | `TM_URL` | `http://localhost:8080/api/logs/ingest` | Backend ingestion URL. |
+| `-env` | - | `production` | Environment tag (e.g. prod, staging). |
+| `-commit` | - | - | Optional git commit hash. |
+| `-batch` | - | `10` | Number of logs to group before sending. |
+| `-interval`| - | `5s` | Max time to wait before flushing a partial batch. |
+
