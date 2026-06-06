@@ -57,24 +57,53 @@ func TestFullFlow(t *testing.T) {
 	json.Unmarshal(rr.Body.Bytes(), &createdApp)
 	assert.NotZero(t, createdApp.ID)
 
-	// 3. Ingest Log
+	// 3. Ingest Log (Single with API Key)
 	logReq := handlers.IngestLogRequest{
-		AppID:       createdApp.ID,
 		Environment: "prod",
 		CommitHash:  "abcdef123456",
 		LogBody:     "panic: runtime error: index out of range\n\ngoroutine 1 [running]:\nmain.main()\n\t/home/user/main.go:42 +0x24",
 	}
 	logBody, _ := json.Marshal(logReq)
 	req, _ = http.NewRequest("POST", "/logs/ingest", bytes.NewBuffer(logBody))
+	req.Header.Set("X-API-Key", createdApp.APIKey)
 	rr = httptest.NewRecorder()
 	r.ServeHTTP(rr, req)
 	assert.Equal(t, http.StatusAccepted, rr.Code)
 
 	var ingestResp map[string]interface{}
 	json.Unmarshal(rr.Body.Bytes(), &ingestResp)
-	clusterID := int64(ingestResp["cluster_id"].(float64))
+	assert.Equal(t, float64(1), ingestResp["processed"])
 
-	// 4. Verify Cluster
+	// 4. Ingest Log (Batch with API Key and 'message' alias)
+	batchLogReq := []handlers.IngestLogRequest{
+		{
+			Environment: "prod",
+			CommitHash:  "abcdef123456",
+			Message:     "Another error occurred",
+		},
+		{
+			Environment: "staging",
+			CommitHash:  "987654fedcba",
+			Message:     "A different error on staging",
+		},
+	}
+	batchLogBody, _ := json.Marshal(batchLogReq)
+	req, _ = http.NewRequest("POST", "/logs/ingest", bytes.NewBuffer(batchLogBody))
+	req.Header.Set("X-API-Key", createdApp.APIKey)
+	rr = httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusAccepted, rr.Code)
+
+	json.Unmarshal(rr.Body.Bytes(), &ingestResp)
+	assert.Equal(t, float64(2), ingestResp["processed"])
+
+	// 5. Verify Cluster (for first log)
+	// We need to find the cluster ID from the DB as it's no longer returned for batches
+	var cluster models.ErrorCluster
+	err = database.NewSelect().Model(&cluster).Where("app_id = ?", createdApp.ID).Limit(1).Scan(ctx)
+	assert.NoError(t, err)
+	clusterID := cluster.ID
+
 	req, _ = http.NewRequest("GET", "/clusters/"+strconv.FormatInt(clusterID, 10), nil)
 	rr = httptest.NewRecorder()
 	r.ServeHTTP(rr, req)

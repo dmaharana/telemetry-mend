@@ -15,6 +15,7 @@ type Application struct {
 	Language    string    `bun:"language" json:"language"`
 	RepoURL     string    `bun:"repo_url,notnull" json:"repo_url"`
 	DefaultBranch string  `bun:"default_branch,notnull,default:'main'" json:"default_branch"`
+	APIKey      string    `bun:"api_key,notnull,unique" json:"api_key"`
 	CreatedAt   time.Time `bun:",nullzero,notnull,default:current_timestamp" json:"created_at"`
 }
 

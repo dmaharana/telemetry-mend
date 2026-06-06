@@ -62,3 +62,55 @@ pnpm dev
 cd telemetry-mend-server
 go test ./...
 ```
+
+## 📡 Log Ingestion API
+
+TelemetryMend provides a robust API for ingesting logs from your applications or log shippers like Vector.
+
+### Authentication
+Every application is assigned a unique API key upon creation. Include this key in the header of your requests:
+- `X-API-Key: tm_your_api_key`
+- OR `Authorization: Bearer tm_your_api_key`
+
+### Endpoint: `POST /api/logs/ingest`
+
+The API supports both single log entries and batched arrays.
+
+#### Single Log Entry
+```bash
+curl -X POST http://localhost:8080/api/logs/ingest \
+  -H "X-API-Key: tm_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "environment": "production",
+    "commit_hash": "a1b2c3d4",
+    "message": "panic: runtime error: index out of range"
+  }'
+```
+
+#### Batched Logs (JSON Array)
+```bash
+curl -X POST http://localhost:8080/api/logs/ingest \
+  -H "X-API-Key: tm_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '[
+    {"message": "Error A", "environment": "prod"},
+    {"message": "Error B", "environment": "staging"}
+  ]'
+```
+
+### 📦 Integration with Vector
+Example `vector.toml` configuration to ship logs to TelemetryMend:
+
+```toml
+[sinks.telemetry_mend]
+type = "http"
+inputs = ["your_log_source"]
+uri = "http://localhost:8080/api/logs/ingest"
+method = "post"
+encoding.codec = "json"
+
+[sinks.telemetry_mend.headers]
+X-API-Key = "tm_your_api_key"
+```
+

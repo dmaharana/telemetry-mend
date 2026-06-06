@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -18,11 +20,23 @@ func NewAppHandler(db *bun.DB) *AppHandler {
 	return &AppHandler{db: db}
 }
 
+func generateAPIKey() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(b)
+}
+
 func (h *AppHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var app models.Application
 	if err := json.NewDecoder(r.Body).Decode(&app); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	if app.APIKey == "" {
+		app.APIKey = "tm_" + generateAPIKey()
 	}
 
 	if _, err := h.db.NewInsert().Model(&app).Exec(r.Context()); err != nil {
