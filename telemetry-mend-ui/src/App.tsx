@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider, useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { BrowserRouter as Router, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
 import { 
@@ -23,12 +23,15 @@ import {
   generateFix, 
   createApp,
   updateApp,
-  deleteApp
+  deleteApp,
+  fetchSettings,
+  updateSettings
 } from '@/lib/api';
 import type { 
   Application,
   ErrorCluster,
-  SuggestedFix
+  SuggestedFix,
+  Settings as LLMSettings
 } from '@/lib/api';
 
 import { Button } from "@/components/ui/button";
@@ -39,6 +42,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { Toaster } from "@/components/ui/toaster";
 
 const queryClient = new QueryClient();
 
@@ -198,6 +204,7 @@ function AppDashboard() {
 function ClusterDetail() {
   const { id } = useParams();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { data, isLoading } = useQuery<{ cluster: ErrorCluster; fixes: SuggestedFix[] }>({
     queryKey: ['cluster', id],
     queryFn: () => fetchClusterDetail(Number(id)),
@@ -207,13 +214,25 @@ function ClusterDetail() {
     mutationFn: (id: number) => generateFix(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cluster', id] });
+      toast({
+        title: "Success",
+        description: "AI Fix suggested successfully.",
+      });
     },
+    onError: (err: any) => {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err.response?.data || "Failed to generate fix.",
+      });
+    }
   });
 
   if (isLoading) return <div className="p-8">Loading cluster details...</div>;
   if (!data) return <div className="p-8 text-destructive">Cluster not found</div>;
 
   const { cluster, fixes } = data;
+  const hasRepo = cluster.application?.repo_url && cluster.application.repo_url !== "";
 
   return (
     <div className="p-8 h-screen flex flex-col overflow-hidden">
@@ -223,9 +242,16 @@ function ClusterDetail() {
             <AlertCircle className="text-destructive w-6 h-6" />
             Error Cluster #{cluster.id}
           </h2>
-          <p className="text-muted-foreground">Analyzed from {cluster.count} logs.</p>
+          <p className="text-muted-foreground">
+            Analyzed from {cluster.count} logs.
+            {!hasRepo && <span className="ml-2 text-amber-600 font-semibold">(Repository not configured)</span>}
+          </p>
         </div>
-        <Button onClick={() => mutation.mutate(cluster.id)} disabled={mutation.isPending}>
+        <Button 
+          onClick={() => mutation.mutate(cluster.id)} 
+          disabled={mutation.isPending || !hasRepo}
+          title={!hasRepo ? "Configure a repository URL in settings to enable AI fixes" : ""}
+        >
           {mutation.isPending ? "Generating Fix..." : "Generate AI Fix"}
         </Button>
       </div>
@@ -300,13 +326,33 @@ function SettingsPage() {
   const [repo, setRepo] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
   
+  const [llmBaseURL, setLlmBaseURL] = useState('');
+  const [llmAPIKey, setLlmAPIKey] = useState('');
+  const [llmModel, setLlmModel] = useState('');
+  const [llmProvider, setLlmProvider] = useState<'openai' | 'mock'>('mock');
+
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const { toast } = useToast();
 
-  const { data: apps } = useQuery({
+  const { data: settings } = useQuery<LLMSettings>({
+    queryKey: ['settings'],
+    queryFn: fetchSettings,
+  });
+
+  const { data: apps } = useQuery<Application[]>({
     queryKey: ['apps'],
     queryFn: fetchApps,
   });
+
+  useEffect(() => {
+    if (settings) {
+      setLlmBaseURL(settings.llm_base_url || '');
+      setLlmAPIKey(settings.llm_api_key || '');
+      setLlmModel(settings.llm_model || '');
+      setLlmProvider(settings.llm_provider || 'mock');
+    }
+  }, [settings]);
 
   const createMutation = useMutation({
     mutationFn: createApp,
@@ -335,6 +381,13 @@ function SettingsPage() {
     },
   });
 
+  const settingsMutation = useMutation({
+    mutationFn: updateSettings,
+    onSuccess: () => {
+      toast({ title: "Settings saved", description: "LLM configuration updated successfully." });
+    },
+  });
+
   const handleEdit = (app: Application) => {
     setEditingId(Number(app.id));
     setName(app.name);
@@ -356,45 +409,114 @@ function SettingsPage() {
     }
   };
 
+  const handleSaveSettings = () => {
+    settingsMutation.mutate({
+      llm_base_url: llmBaseURL,
+      llm_api_key: llmAPIKey,
+      llm_model: llmModel,
+      llm_provider: llmProvider,
+    });
+  };
+
   return (
-    <div className="p-8 max-w-4xl mx-auto space-y-8">
+    <div className="p-8 max-w-6xl mx-auto space-y-8">
       <div>
         <h2 className="text-3xl font-bold tracking-tight">System Settings</h2>
         <p className="text-muted-foreground">Configure your microservices and SCM integrations.</p>
       </div>
       <Separator />
-      
-      <div className="grid gap-8 md:grid-cols-2">
-        <Card className="h-fit">
-          <CardHeader>
-            <CardTitle>{editingId ? "Edit Application" : "Register New Application"}</CardTitle>
-            <CardDescription>
-              {editingId ? `Updating ${name}` : "Add a new microservice for log analysis."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Application Name</Label>
-              <Input id="name" placeholder="e.g. auth-service" value={name} onChange={e => setName(e.target.value)} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="repo">Git Repository URL</Label>
-              <Input id="repo" placeholder="https://github.com/org/repo.git" value={repo} onChange={e => setRepo(e.target.value)} />
-            </div>
-          </CardContent>
-          <CardFooter className="flex justify-between">
-            {editingId && (
-              <Button variant="ghost" onClick={handleCancel}>Cancel</Button>
-            )}
-            <Button 
-              onClick={handleSubmit} 
-              disabled={createMutation.isPending || updateMutation.isPending}
-              className={editingId ? "" : "ml-auto"}
-            >
-              {createMutation.isPending || updateMutation.isPending ? "Saving..." : (editingId ? "Update Application" : "Add Application")}
-            </Button>
-          </CardFooter>
-        </Card>
+
+      <div className="grid gap-8 lg:grid-cols-3">
+        <div className="lg:col-span-2 space-y-8">
+          <Card>
+            <CardHeader>
+              <CardTitle>LLM Service Configuration</CardTitle>
+              <CardDescription>
+                Connect to an OpenAI-compliant LLM service (OpenAI, Azure, LocalLLM, etc.)
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Provider Type</Label>
+                  <Select value={llmProvider} onValueChange={(v: any) => setLlmProvider(v)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select provider" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="mock">Mock (Development)</SelectItem>
+                      <SelectItem value="openai">OpenAI Compliant API</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Model Name</Label>
+                  <Input 
+                    placeholder="gpt-4o, llama3, etc." 
+                    value={llmModel} 
+                    onChange={e => setLlmModel(e.target.value)}
+                    disabled={llmProvider === 'mock'}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>API Base URL</Label>
+                <Input 
+                  placeholder="https://api.openai.com/v1" 
+                  value={llmBaseURL} 
+                  onChange={e => setLlmBaseURL(e.target.value)}
+                  disabled={llmProvider === 'mock'}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>API Key</Label>
+                <Input 
+                  type="password" 
+                  placeholder="sk-..." 
+                  value={llmAPIKey} 
+                  onChange={e => setLlmAPIKey(e.target.value)}
+                  disabled={llmProvider === 'mock'}
+                />
+              </div>
+            </CardContent>
+            <CardFooter>
+              <Button onClick={handleSaveSettings} disabled={settingsMutation.isPending}>
+                {settingsMutation.isPending ? "Saving..." : "Save LLM Config"}
+              </Button>
+            </CardFooter>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>{editingId ? "Edit Application" : "Register New Application"}</CardTitle>
+              <CardDescription>
+                {editingId ? `Updating ${name}` : "Add a new microservice for log analysis."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="name">Application Name</Label>
+                <Input id="name" placeholder="e.g. auth-service" value={name} onChange={e => setName(e.target.value)} />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="repo">Git Repository URL</Label>
+                <Input id="repo" placeholder="https://github.com/org/repo.git" value={repo} onChange={e => setRepo(e.target.value)} />
+              </div>
+            </CardContent>
+            <CardFooter className="flex justify-between">
+              {editingId && (
+                <Button variant="ghost" onClick={handleCancel}>Cancel</Button>
+              )}
+              <Button 
+                onClick={handleSubmit} 
+                disabled={createMutation.isPending || updateMutation.isPending}
+                className={editingId ? "" : "ml-auto"}
+              >
+                {createMutation.isPending || updateMutation.isPending ? "Saving..." : (editingId ? "Update Application" : "Add Application")}
+              </Button>
+            </CardFooter>
+          </Card>
+        </div>
 
         <div className="space-y-4">
           <h3 className="text-lg font-semibold">Existing Applications</h3>
@@ -404,7 +526,7 @@ function SettingsPage() {
                 <CardContent className="p-4 flex items-center justify-between">
                   <div className="overflow-hidden">
                     <p className="font-medium truncate">{app.name}</p>
-                    <p className="text-xs text-muted-foreground truncate">{app.repo_url}</p>
+                    <p className="text-xs text-muted-foreground truncate">{app.repo_url || "No repository"}</p>
                   </div>
                   <div className="flex gap-2 ml-4 shrink-0">
                     <Button variant="outline" size="icon" onClick={() => handleEdit(app)}>
@@ -478,6 +600,7 @@ function App() {
       <Router>
         <AppContent />
       </Router>
+      <Toaster />
     </QueryClientProvider>
   );
 }

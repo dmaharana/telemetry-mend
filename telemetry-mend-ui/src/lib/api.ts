@@ -21,6 +21,7 @@ export interface ErrorCluster {
   last_seen: string;
   count: number;
   created_at: string;
+  application?: Application;
 }
 
 export interface SuggestedFix {
@@ -34,6 +35,24 @@ export interface SuggestedFix {
   status: string;
   created_at: string;
 }
+
+export interface Settings {
+  id?: number;
+  llm_base_url: string;
+  llm_api_key: string;
+  llm_model: string;
+  llm_provider: 'openai' | 'mock';
+}
+
+export const fetchSettings = async () => {
+  const { data } = await api.get<Settings>('/settings');
+  return data;
+};
+
+export const updateSettings = async (settings: Settings) => {
+  const { data } = await api.put<Settings>('/settings', settings);
+  return data;
+};
 
 export const fetchApps = async () => {
   const { data } = await api.get<Application[]>('/apps');
