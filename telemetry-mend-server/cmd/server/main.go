@@ -65,6 +65,9 @@ func main() {
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/apps", appHandler.Create)
 		r.Get("/apps", appHandler.List)
+		r.Get("/apps/{id}", appHandler.Get)
+		r.Put("/apps/{id}", appHandler.Update)
+		r.Delete("/apps/{id}", appHandler.Delete)
 		r.Post("/logs/ingest", logHandler.Ingest)
 		r.Get("/clusters", clusterHandler.List)
 		r.Get("/clusters/{id}", clusterHandler.Get)
