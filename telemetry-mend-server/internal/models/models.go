@@ -76,6 +76,16 @@ type SuggestedFix struct {
 	Cluster       *ErrorCluster `bun:"rel:belongs-to,join:cluster_id=id" json:"cluster"`
 }
 
+type Settings struct {
+	bun.BaseModel `bun:"table:settings,alias:s"`
+
+	ID           int64  `bun:"id,pk,autoincrement" json:"id"`
+	LLMBaseURL   string `bun:"llm_base_url" json:"llm_base_url"`
+	LLMAPIKey    string `bun:"llm_api_key" json:"llm_api_key"`
+	LLMModel     string `bun:"llm_model" json:"llm_model"`
+	LLMProvider  string `bun:"llm_provider" json:"llm_provider"` // openai, mock
+}
+
 func CreateTables(ctx context.Context, db *bun.DB) error {
 	models := []interface{}{
 		(*Application)(nil),
@@ -83,6 +93,7 @@ func CreateTables(ctx context.Context, db *bun.DB) error {
 		(*ErrorCluster)(nil),
 		(*LogEntry)(nil),
 		(*SuggestedFix)(nil),
+		(*Settings)(nil),
 	}
 
 	for _, model := range models {

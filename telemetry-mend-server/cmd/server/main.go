@@ -61,6 +61,7 @@ func main() {
 	appHandler := handlers.NewAppHandler(database)
 	logHandler := handlers.NewLogHandler(database)
 	clusterHandler := handlers.NewClusterHandler(database, fixer)
+	settingsHandler := handlers.NewSettingsHandler(database)
 
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/apps", appHandler.Create)
@@ -72,6 +73,8 @@ func main() {
 		r.Get("/clusters", clusterHandler.List)
 		r.Get("/clusters/{id}", clusterHandler.Get)
 		r.Post("/clusters/{id}/fix", clusterHandler.GenerateFix)
+		r.Get("/settings", settingsHandler.Get)
+		r.Put("/settings", settingsHandler.Update)
 	})
 
 	srv := &http.Server{
