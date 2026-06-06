@@ -40,9 +40,23 @@ export const fetchApps = async () => {
   return data;
 };
 
+export const fetchApp = async (id: number) => {
+  const { data } = await api.get<Application>(`/apps/${id}`);
+  return data;
+};
+
 export const createApp = async (app: Partial<Application>) => {
   const { data } = await api.post<Application>('/apps', app);
   return data;
+};
+
+export const updateApp = async ({ id, ...app }: Partial<Application> & { id: number }) => {
+  const { data } = await api.put<Application>(`/apps/${id}`, app);
+  return data;
+};
+
+export const deleteApp = async (id: number) => {
+  await api.delete(`/apps/${id}`);
 };
 
 export const fetchClusters = async (appId?: number) => {

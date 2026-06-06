@@ -9,16 +9,21 @@ import {
   ChevronRight,
   AlertCircle,
   Code2,
-  CheckCircle2
+  CheckCircle2,
+  Trash2,
+  Edit2
 } from 'lucide-react';
 import ReactDiffViewer from 'react-diff-viewer-continued';
 
 import { 
   fetchApps, 
+  fetchApp,
   fetchClusters, 
   fetchClusterDetail, 
   generateFix, 
   createApp,
+  updateApp,
+  deleteApp
 } from '@/lib/api';
 import type { 
   Application,
@@ -135,6 +140,11 @@ function GlobalDashboard() {
 
 function AppDashboard() {
   const { id } = useParams();
+  const { data: app } = useQuery<Application>({
+    queryKey: ['apps', id],
+    queryFn: () => fetchApp(Number(id)),
+  });
+
   const { data: clusters, isLoading } = useQuery<ErrorCluster[]>({
     queryKey: ['clusters', id],
     queryFn: () => fetchClusters(Number(id)),
@@ -146,9 +156,15 @@ function AppDashboard() {
     <div className="p-8 space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">App Dashboard</h2>
+          <h2 className="text-3xl font-bold tracking-tight">{app?.name || 'App Dashboard'}</h2>
           <p className="text-muted-foreground">Error clusters for this specific application.</p>
         </div>
+        <Link to="/settings">
+          <Button variant="outline" className="gap-2">
+            <Settings className="w-4 h-4" />
+            Manage App
+          </Button>
+        </Link>
       </div>
       <Separator />
       <div className="space-y-4">
@@ -282,45 +298,142 @@ function ClusterDetail() {
 function SettingsPage() {
   const [name, setName] = useState('');
   const [repo, setRepo] = useState('');
+  const [editingId, setEditingId] = useState<number | null>(null);
+  
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const mutation = useMutation({
+  const { data: apps } = useQuery({
+    queryKey: ['apps'],
+    queryFn: fetchApps,
+  });
+
+  const createMutation = useMutation({
     mutationFn: createApp,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['apps'] });
+      setName('');
+      setRepo('');
       navigate(`/app/${data.id}`);
     },
   });
 
+  const updateMutation = useMutation({
+    mutationFn: updateApp,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['apps'] });
+      setEditingId(null);
+      setName('');
+      setRepo('');
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteApp,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['apps'] });
+    },
+  });
+
+  const handleEdit = (app: Application) => {
+    setEditingId(Number(app.id));
+    setName(app.name);
+    setRepo(app.repo_url);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancel = () => {
+    setEditingId(null);
+    setName('');
+    setRepo('');
+  };
+
+  const handleSubmit = () => {
+    if (editingId) {
+      updateMutation.mutate({ id: editingId, name, repo_url: repo });
+    } else {
+      createMutation.mutate({ name, repo_url: repo });
+    }
+  };
+
   return (
-    <div className="p-8 max-w-2xl mx-auto space-y-8">
+    <div className="p-8 max-w-4xl mx-auto space-y-8">
       <div>
         <h2 className="text-3xl font-bold tracking-tight">System Settings</h2>
         <p className="text-muted-foreground">Configure your microservices and SCM integrations.</p>
       </div>
       <Separator />
-      <Card>
-        <CardHeader>
-          <CardTitle>Register New Application</CardTitle>
-          <CardDescription>Add a new microservice for log analysis.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Application Name</Label>
-            <Input id="name" placeholder="e.g. auth-service" value={name} onChange={e => setName(e.target.value)} />
+      
+      <div className="grid gap-8 md:grid-cols-2">
+        <Card className="h-fit">
+          <CardHeader>
+            <CardTitle>{editingId ? "Edit Application" : "Register New Application"}</CardTitle>
+            <CardDescription>
+              {editingId ? `Updating ${name}` : "Add a new microservice for log analysis."}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Application Name</Label>
+              <Input id="name" placeholder="e.g. auth-service" value={name} onChange={e => setName(e.target.value)} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="repo">Git Repository URL</Label>
+              <Input id="repo" placeholder="https://github.com/org/repo.git" value={repo} onChange={e => setRepo(e.target.value)} />
+            </div>
+          </CardContent>
+          <CardFooter className="flex justify-between">
+            {editingId && (
+              <Button variant="ghost" onClick={handleCancel}>Cancel</Button>
+            )}
+            <Button 
+              onClick={handleSubmit} 
+              disabled={createMutation.isPending || updateMutation.isPending}
+              className={editingId ? "" : "ml-auto"}
+            >
+              {createMutation.isPending || updateMutation.isPending ? "Saving..." : (editingId ? "Update Application" : "Add Application")}
+            </Button>
+          </CardFooter>
+        </Card>
+
+        <div className="space-y-4">
+          <h3 className="text-lg font-semibold">Existing Applications</h3>
+          <div className="space-y-3">
+            {apps?.map(app => (
+              <Card key={app.id}>
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div className="overflow-hidden">
+                    <p className="font-medium truncate">{app.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{app.repo_url}</p>
+                  </div>
+                  <div className="flex gap-2 ml-4 shrink-0">
+                    <Button variant="outline" size="icon" onClick={() => handleEdit(app)}>
+                      <Edit2 className="w-4 h-4" />
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="icon" 
+                      className="text-destructive hover:bg-destructive/10"
+                      onClick={() => {
+                        if (confirm(`Are you sure you want to delete ${app.name}? All related logs and fixes will be lost.`)) {
+                          deleteMutation.mutate(Number(app.id));
+                        }
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+            {apps?.length === 0 && (
+              <p className="text-sm text-muted-foreground italic text-center py-8 bg-slate-50 rounded-lg border-2 border-dashed">
+                No applications registered yet.
+              </p>
+            )}
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="repo">Git Repository URL</Label>
-            <Input id="repo" placeholder="https://github.com/org/repo.git" value={repo} onChange={e => setRepo(e.target.value)} />
-          </div>
-        </CardContent>
-        <CardFooter>
-          <Button onClick={() => mutation.mutate({ name, repo_url: repo })} disabled={mutation.isPending}>
-            {mutation.isPending ? "Registering..." : "Add Application"}
-          </Button>
-        </CardFooter>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }
